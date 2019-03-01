@@ -20,8 +20,8 @@ function moveFiles {
   fi;
 
   # Replace the container's hostname with 0.0.0.0
-  sed -i 's/'$(hostname)'/0.0.0.0/g' $ORACLE_HOME/network/admin/listener.ora
-  sed -i 's/'$(hostname)'/0.0.0.0/g' $ORACLE_HOME/network/admin/tnsnames.ora
+  sed -i -r 's/HOST = [a-zA-Z0-9.]+/HOST = 0.0.0.0/g' $ORACLE_HOME/network/admin/listener.ora
+  sed -i -r 's/HOST = [a-zA-Z0-9.]+/HOST = 0.0.0.0/g' $ORACLE_HOME/network/admin/tnsnames.ora
 
   mv $ORACLE_HOME/dbs/spfile$ORACLE_SID.ora $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/
   mv $ORACLE_HOME/dbs/orapw$ORACLE_SID $ORACLE_BASE/oradata/dbconfig/$ORACLE_SID/
@@ -114,11 +114,11 @@ trap _kill SIGKILL
 ORACLE_CMD=/etc/init.d/oracle-xe-18c
 
 # Check whether database already exists
-if [ -d $ORACLE_BASE/oradata/$ORACLE_SID ]; then
-  echo Database exists
+if [ -f /setup_complete ]; then
+  echo "Database setup already completed"
    
   # Make sure audit file destination exists
-  if [ ! -d $ORACLE_BASE/admin/$ORACLE_SID/adump ]; then
+  if [ ! -f $ORACLE_BASE/admin/$ORACLE_SID/adump ]; then
     mkdir -p $ORACLE_BASE/admin/$ORACLE_SID/adump
     chown -R oracle.oinstall $ORACLE_BASE/admin
   fi;
@@ -129,36 +129,44 @@ if [ -d $ORACLE_BASE/oradata/$ORACLE_SID ]; then
   ${ORACLE_CMD} start
   
 else
-  echo Database does not exists, configuring
+  echo "Need to complete database setup"
  
-  mkdir -p ${ORACLE_BASE}/oradata
-  chown oracle.oinstall ${ORACLE_BASE}/oradata
-
-  ${ORACLE_CMD} configure
-
-  # Enable EM remote access
-  runuser oracle -s /bin/bash -c "${ORACLE_BASE}/scripts/${EM_REMOTE_ACCESS} ${EM_GLOBAL_ACCESS_YN:-N}"
+  # These steps are done during database setup. Don't need to do them again.
+  #mkdir -p ${ORACLE_BASE}/oradata
+  #chown oracle.oinstall ${ORACLE_BASE}/oradata
+  #${ORACLE_CMD} configure
 
   # Move database operational files to oradata
+  echo "Moving files and renaming listener paths"
   moveFiles;
+
+  echo "Restarting database"
+  ${ORACLE_CMD} restart
+
+  # Enable EM remote access
+  echo "Setting up remote access"
+  runuser oracle -s /bin/bash -c "${ORACLE_BASE}/scripts/${EM_REMOTE_ACCESS} ${EM_GLOBAL_ACCESS_YN:-N}"
    
+  echo "Initial setup complete"
+  touch /setup_complete
+
 fi;
 
 # Check whether database is up and running
-# $ORACLE_BASE/scripts/$CHECK_DB_FILE
-# if [ $? -eq 0 ]; then
-#   echo "#########################"
-#   echo "DATABASE IS READY TO USE!"
-#   echo "#########################"
+$ORACLE_BASE/scripts/$CHECK_DB_FILE
+if [ $? -eq 0 ]; then
+  echo "#########################"
+  echo "DATABASE IS READY TO USE!"
+  echo "#########################"
   
-# else
-#   echo "#####################################"
-#   echo "########### E R R O R ###############"
-#   echo "DATABASE SETUP WAS NOT SUCCESSFUL!"
-#   echo "Please check output for further info!"
-#   echo "########### E R R O R ###############" 
-#   echo "#####################################"
-# fi;
+else
+  echo "#####################################"
+  echo "########### E R R O R ###############"
+  echo "DATABASE SETUP WAS NOT SUCCESSFUL!"
+  echo "Please check output for further info!"
+  echo "########### E R R O R ###############" 
+  echo "#####################################"
+fi;
 
 # Tail on alert log and wait (otherwise container will exit)
 echo "The following output is now a tail of the alert.log:"

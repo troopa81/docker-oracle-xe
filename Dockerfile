@@ -32,7 +32,11 @@ RUN chmod a+x ${ORACLE_BASE}/scripts/*.sh
 # 5500: Oracle Enterprise Manager (EM) Express listener.
 EXPOSE 1521 5500
 
-VOLUME [ "${ORACLE_BASE}/oradata" ]
+RUN mkdir -p ${ORACLE_BASE}/oradata
+RUN chown oracle.oinstall ${ORACLE_BASE}/oradata
+RUN /etc/init.d/oracle-xe-18c configure
+
+# VOLUME [ "${ORACLE_BASE}/oradata" ]
 
 HEALTHCHECK --interval=1m --start-period=2m --retries=10 \
   CMD "$ORACLE_BASE/scripts/$CHECK_DB_FILE"
